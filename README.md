@@ -22,10 +22,12 @@
 **尚未发布到 npm**，从 GitHub 装：
 
 ```sh
-dsh plugin --profile web add github:keman-ai/dsh-opencode-zen
+dsh plugin --profile web add -w github:keman-ai/dsh-opencode-zen
 ```
 
-仓库里不提交构建产物，`pnpm` 会在安装时跑 `prepare` 现场构建（约 10 秒，实测通过）。
+**`-w` 不能省**。profile 目录自带 `pnpm-workspace.yaml`，pnpm 会认为它是 workspace 根，不带这个标志直接报 `ERR_PNPM_ADDING_TO_ROOT`。
+
+仓库里不提交构建产物，`pnpm` 会在安装时跑 `prepare` 现场构建（十几秒，实测通过）。
 
 想改代码就本地装：
 
@@ -38,6 +40,14 @@ dsh plugin --profile web add <这个目录的绝对路径>
 `--profile` 跟着你平时用的那个走（`web` / `headless` 都行）——这是个 LLM provider，不依赖 Web GUI。
 
 装完**重启一次 dsh**，模型选择器里就会出现 `opencode-zen` 这一组。
+
+装好后可以先确认它进了 Loader 树：
+
+```sh
+dsh --profile web --dump-config | grep -A 1 opencode-zen
+# - id: opencode-zen
+#   name: dsh-opencode-zen
+```
 
 ## 要不要 API key
 
