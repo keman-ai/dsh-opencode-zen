@@ -19,18 +19,25 @@
 
 ## 安装
 
+**尚未发布到 npm**，从 GitHub 装：
+
 ```sh
-dsh plugin --profile web add dsh-opencode-zen
+dsh plugin --profile web add github:keman-ai/dsh-opencode-zen
 ```
 
-或者在 profile 的 `cordis.yml` 里直接写一行：
+仓库里不提交构建产物，`pnpm` 会在安装时跑 `prepare` 现场构建（约 10 秒，实测通过）。
 
-```yaml
-plugins:
-  dsh-opencode-zen:
+想改代码就本地装：
+
+```sh
+git clone https://github.com/keman-ai/dsh-opencode-zen
+cd dsh-opencode-zen && pnpm install && pnpm build
+dsh plugin --profile web add <这个目录的绝对路径>
 ```
 
-装完重启一次 dsh，模型选择器里就会出现 `opencode-zen` 这一组。
+`--profile` 跟着你平时用的那个走（`web` / `headless` 都行）——这是个 LLM provider，不依赖 Web GUI。
+
+装完**重启一次 dsh**，模型选择器里就会出现 `opencode-zen` 这一组。
 
 ## 要不要 API key
 
