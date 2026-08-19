@@ -1,0 +1,56 @@
+{
+  "name": "dsh-opencode-zen",
+  "version": "0.1.0",
+  "description": "OpenCode Zen 的免费模型接进 DeepSeek Harness：一个 LLM provider 插件，装上即可在模型列表里选 7 个免费模型",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "llm",
+    "provider",
+    "opencode",
+    "zen",
+    "free-models"
+  ],
+  "license": "MIT",
+  "author": "Science Roam Limited",
+  "homepage": "https://github.com/keman-ai/dsh-opencode-zen#readme",
+  "bugs": {
+    "url": "https://github.com/keman-ai/dsh-opencode-zen/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keman-ai/dsh-opencode-zen.git"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "prepare": "tsdown",
+    "check": "tsc --noEmit",
+    "test": "node --test tests/*.test.ts"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsdown": "^0.15.6",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
