@@ -19,7 +19,7 @@
 
 ## 安装
 
-**尚未发布到 npm**，从 GitHub 装：
+**不发布到 npm**，从 GitHub 装：
 
 ```sh
 dsh plugin --profile web add -w github:keman-ai/dsh-opencode-zen
@@ -27,7 +27,7 @@ dsh plugin --profile web add -w github:keman-ai/dsh-opencode-zen
 
 **`-w` 不能省**。profile 目录自带 `pnpm-workspace.yaml`，pnpm 会认为它是 workspace 根，不带这个标志直接报 `ERR_PNPM_ADDING_TO_ROOT`。
 
-仓库里不提交构建产物，`pnpm` 会在安装时跑 `prepare` 现场构建（十几秒，实测通过）。
+仓库里带着构建产物（`lib/`），也没有 `prepare` 脚本，所以从 git 源安装时 pnpm 不需要执行任何构建脚本，你不必为它授权 `allowBuilds`，也不必在自己机器上装一遍构建工具链。
 
 想改代码就本地装：
 
@@ -109,6 +109,8 @@ pnpm check      # 类型检查
 pnpm test       # 单元测试
 pnpm build      # 打包到 lib/
 ```
+
+**`lib/` 是故意提交进仓库的**：这个包不发 npm，所有人都从 git 源安装，而 pnpm 装 git 源时能不能构建取决于对方机器的工具链和 `allowBuilds` 授权。带上产物就没有这个变数。**改完代码要把 `pnpm build` 的产物一并提交。**
 
 代码分成四层，都可以单独测：
 

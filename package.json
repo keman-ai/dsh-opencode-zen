@@ -44,9 +44,9 @@
   ],
   "scripts": {
     "build": "tsdown",
-    "prepare": "tsdown",
     "check": "tsc --noEmit",
-    "test": "node --test tests/*.test.ts"
+    "test": "node --test tests/*.test.ts",
+    "prepublishOnly": "tsdown"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.0"
