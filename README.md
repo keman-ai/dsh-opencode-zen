@@ -12,13 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/keman-ai/dsh-opencode-zen">
-    <img src="https://img.shields.io/badge/%E5%A6%82%E6%9E%9C%E5%96%9C%E6%AC%A2-%E7%82%B9%E4%B8%AA%20Star%20%E2%AD%90-4D6BFE?style=for-the-badge&labelColor=24292f" alt="给个 Star">
-  </a>
-</p>
-
-<p align="center">
-  <b>免费模型，不用注册也不用 API key</b>　·　Star 是我们判断该不该继续维护的唯一信号
+  <b>如果喜欢就给个 Star 鼓励我们一下吧</b>
 </p>
 
 装上不用配任何东西。Zen 的免费模型允许匿名调用，插件启动后模型选择器里直接多出一组能用的模型。
@@ -143,5 +137,5 @@ pnpm build      # 打包到 lib/
 ---
 
 <p align="center">
-  <sub>如果这个插件帮你省下了 API 开销，<a href="https://github.com/keman-ai/dsh-opencode-zen">给个 Star ⭐</a> 就是最好的支持。</sub>
+  <sub>如果喜欢就给个 Star 鼓励我们一下吧</sub>
 </p>
