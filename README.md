@@ -12,7 +12,13 @@
 </p>
 
 <p align="center">
-  <sub>省下一笔 API 钱的话，点个 ⭐ —— 这是我们判断该不该继续维护的唯一信号。</sub>
+  <a href="../../stargazers">
+    <img src="https://img.shields.io/badge/%E5%A6%82%E6%9E%9C%E5%96%9C%E6%AC%A2-%E7%82%B9%E4%B8%AA%20Star%20%E2%AD%90-4D6BFE?style=for-the-badge&labelColor=24292f" alt="给个 Star">
+  </a>
+</p>
+
+<p align="center">
+  <b>免费模型，不用注册也不用 API key</b>　·　Star 是我们判断该不该继续维护的唯一信号
 </p>
 
 装上不用配任何东西。Zen 的免费模型允许匿名调用，插件启动后模型选择器里直接多出一组能用的模型。
