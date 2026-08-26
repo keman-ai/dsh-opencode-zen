@@ -7,12 +7,12 @@
 </p>
 
 <p align="center">
-  <a href="../../stargazers"><img src="https://img.shields.io/github/stars/keman-ai/dsh-opencode-zen?style=flat&label=Star&color=4D6BFE" alt="Stars"></a>
+  <a href="https://github.com/keman-ai/dsh-opencode-zen"><img src="https://img.shields.io/github/stars/keman-ai/dsh-opencode-zen?style=flat&label=Star&color=4D6BFE" alt="Stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA44F?style=flat" alt="MIT License"></a>
 </p>
 
 <p align="center">
-  <a href="../../stargazers">
+  <a href="https://github.com/keman-ai/dsh-opencode-zen">
     <img src="https://img.shields.io/badge/%E5%A6%82%E6%9E%9C%E5%96%9C%E6%AC%A2-%E7%82%B9%E4%B8%AA%20Star%20%E2%AD%90-4D6BFE?style=for-the-badge&labelColor=24292f" alt="给个 Star">
   </a>
 </p>
@@ -143,5 +143,5 @@ pnpm build      # 打包到 lib/
 ---
 
 <p align="center">
-  <sub>如果这个插件帮你省下了 API 开销，<a href="../../stargazers">给个 Star ⭐</a> 就是最好的支持。</sub>
+  <sub>如果这个插件帮你省下了 API 开销，<a href="https://github.com/keman-ai/dsh-opencode-zen">给个 Star ⭐</a> 就是最好的支持。</sub>
 </p>
