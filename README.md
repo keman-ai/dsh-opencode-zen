@@ -88,10 +88,6 @@ plugins:
 - **纯文本。** 七个模型都只吃文本，工具结果里的图片会被替换成一行占位说明，而不是静默丢掉。
 - **付费模型不进目录。** Zen 也有 Claude、GPT 等付费模型，但本插件存在的理由就是「不配任何东西也能先跑起来」，混在一个列表里会让人分不清点哪个要花钱。要用付费的，配一个指向同一端点的 `llm-deepseek` 条目即可。
 
-## Star 趋势
-
-[![Star History Chart](https://api.star-history.com/svg?repos=keman-ai/dsh-opencode-zen&type=Date)](https://star-history.com/#keman-ai/dsh-opencode-zen&Date)
-
 ## 开发
 
 ```sh
@@ -119,3 +115,7 @@ pnpm build      # 打包到 lib/
 ## 许可
 
 [MIT](LICENSE) © 2026 Science Roam Limited
+
+## Star 趋势
+
+[![Star History Chart](https://api.star-history.com/svg?repos=keman-ai/dsh-opencode-zen&type=Date)](https://star-history.com/#keman-ai/dsh-opencode-zen&Date)
