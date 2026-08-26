@@ -1,8 +1,21 @@
-# dsh-opencode-zen
+<h1 align="center">DSH OpenCode Zen</h1>
 
-**把 [OpenCode Zen](https://opencode.ai/zen) 的免费模型接进 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。**
+<p align="center">
+  <strong>把 <a href="https://opencode.ai/zen">OpenCode Zen</a> 的免费模型接进
+  <a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a>。</strong><br>
+  不用注册、不用 API key、不用填余额。
+</p>
 
-装上不用配任何东西——不用注册、不用 API key、不用填余额。Zen 的免费模型允许匿名调用，插件启动后模型选择器里直接多出一组能用的模型。
+<p align="center">
+  <a href="../../stargazers"><img src="https://img.shields.io/github/stars/keman-ai/dsh-opencode-zen?style=flat&label=Star&color=4D6BFE" alt="Stars"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA44F?style=flat" alt="MIT License"></a>
+</p>
+
+<p align="center">
+  <sub>省下一笔 API 钱的话，点个 ⭐ —— 这是我们判断该不该继续维护的唯一信号。</sub>
+</p>
+
+装上不用配任何东西。Zen 的免费模型允许匿名调用，插件启动后模型选择器里直接多出一组能用的模型。
 
 ```
 模型选择器
@@ -111,11 +124,18 @@ pnpm build      # 打包到 lib/
 - [OpenCode Zen](https://opencode.ai/zen) —— 模型网关本体，key 在这里取
 - [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) —— 宿主
 - [dsh-skin-market](https://github.com/keman-ai/dsh-skin-market) —— 同一批人做的皮肤市场插件
+- [dsh-skin-pack](https://github.com/keman-ai/dsh-skin-pack) —— 28 套官方皮肤，一个仓库全在里面
+
+## Star 趋势
+
+[![Star History Chart](https://api.star-history.com/svg?repos=keman-ai/dsh-opencode-zen&type=Date)](https://star-history.com/#keman-ai/dsh-opencode-zen&Date)
 
 ## 许可
 
 [MIT](LICENSE) © 2026 Science Roam Limited
 
-## Star 趋势
+---
 
-[![Star History Chart](https://api.star-history.com/svg?repos=keman-ai/dsh-opencode-zen&type=Date)](https://star-history.com/#keman-ai/dsh-opencode-zen&Date)
+<p align="center">
+  <sub>如果这个插件帮你省下了 API 开销，<a href="../../stargazers">给个 Star ⭐</a> 就是最好的支持。</sub>
+</p>
