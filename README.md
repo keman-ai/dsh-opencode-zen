@@ -124,7 +124,7 @@ pnpm build      # 打包到 lib/
 - [OpenCode Zen](https://opencode.ai/zen) —— 模型网关本体，key 在这里取
 - [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) —— 宿主
 - [dsh-skin-market](https://github.com/keman-ai/dsh-skin-market) —— 同一批人做的皮肤市场插件
-- [dsh-skin-pack](https://github.com/keman-ai/dsh-skin-pack) —— 28 套官方皮肤，一个仓库全在里面
+- [dsh-skin-pack](https://github.com/keman-ai/dsh-skin-pack) —— 官方皮肤，一个仓库全在里面
 
 ## Star 趋势
 
