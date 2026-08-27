@@ -130,10 +130,6 @@ pnpm build      # 打包到 lib/
 - [dsh-skin-market](https://github.com/keman-ai/dsh-skin-market) —— 同一批人做的皮肤市场插件
 - [dsh-skin-pack](https://github.com/keman-ai/dsh-skin-pack) —— 官方皮肤，一个仓库全在里面
 
-## Star 趋势
-
-[![Star History Chart](https://api.star-history.com/svg?repos=keman-ai/dsh-opencode-zen&type=Date)](https://star-history.com/#keman-ai/dsh-opencode-zen&Date)
-
 ## 许可
 
 [MIT](LICENSE) © 2026 Science Roam Limited

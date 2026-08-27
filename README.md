@@ -152,10 +152,6 @@ machine's toolchain and `allowBuilds` grants. Shipping the output removes that v
 - [dsh-skin-market](https://github.com/keman-ai/dsh-skin-market) — skin marketplace plugin by the same people
 - [dsh-skin-pack](https://github.com/keman-ai/dsh-skin-pack) — the official skins, all in one repository
 
-## Star history
-
-[![Star History Chart](https://api.star-history.com/svg?repos=keman-ai/dsh-opencode-zen&type=Date)](https://star-history.com/#keman-ai/dsh-opencode-zen&Date)
-
 ## License
 
 [MIT](LICENSE) © 2026 Science Roam Limited
