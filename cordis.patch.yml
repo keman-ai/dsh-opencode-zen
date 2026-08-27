@@ -1,8 +1,9 @@
-# 本包贡献的配置层：把 provider 插件插进 Loader 树。
-# profile 列出这个包时自动应用（见 apps/cli/reference：dsh.profile.bundles）。
+# The config layer this package contributes: it inserts the provider plugin into the
+# Loader tree. Applied automatically when a profile lists this package
+# (see apps/cli/reference: dsh.profile.bundles).
 #
-# 没有这一层的话，`dsh plugin add` 只会把包装成一个普通依赖，插件永远不会被加载
-# —— dsh 会当场警告 “declares no dsh.bundle … not a profile layer”。
+# Without this layer, `dsh plugin add` installs the package as a plain dependency and the
+# plugin is never loaded — dsh warns "declares no dsh.bundle … not a profile layer".
 - insert:
     - id: opencode-zen
       name: dsh-opencode-zen

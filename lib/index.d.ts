@@ -4,48 +4,50 @@ import { Context } from "@deepseek-ai/cordis";
 //#region src/catalog.d.ts
 
 /**
- * 随包快照：上游目录拉不到时用的兜底清单。
+ * Bundled snapshot: the fallback list used when the upstream catalog is unreachable.
  *
- * **正常路径不读这里** —— 免费模型由 `discovery.ts` 从 models.dev + zen 现拉，
- * 因为 Zen 明说免费模型是「限时提供、供厂商收集反馈」，写死的清单必然过期。
- * 这份快照只在断网、models.dev 挂掉或返回异常时顶上，让插件在没有网络的机器上
- * 仍然有个可选列表，而不是空白。
+ * **The normal path never reads this.** `discovery.ts` fetches free models live from
+ * models.dev + Zen, because Zen states they are "time-limited, for vendor feedback" —
+ * any hardcoded list is guaranteed to go stale. This snapshot only steps in when the
+ * network is down or models.dev misbehaves, so an offline machine still sees a list
+ * instead of nothing.
  *
- * 数值抄自 models.dev 的 `opencode` provider（2026-08-18 核对），七个模型当时
- * 全部 `cost: 0` / `tool_call: true` / `reasoning: true`。
+ * Values copied from models.dev's `opencode` provider (verified 2026-08-18); all seven
+ * models were `cost: 0` / `tool_call: true` / `reasoning: true` at the time.
  */
-/** 一条目录项：模型 id 加上展示与容量信息。 */
+/** A catalog entry: model id plus display and capacity info. */
 interface ZenModel {
-  /** 传给 `/chat/completions` 的 `model` 字段。 */
+  /** The `model` field sent to `/chat/completions`. */
   readonly id: string;
-  /** 选择器里显示的名字。 */
+  /** Name shown in the model picker. */
   readonly name: string;
-  /** 一句话区分同类模型。 */
+  /** One line to tell similar models apart. */
   readonly description: string;
-  /** 请求加响应的上下文上限（token）。 */
+  /** Context limit for request plus response, in tokens. */
   readonly contextWindow: number;
-  /** 单次响应的输出上限（token）。 */
+  /** Output cap for a single response, in tokens. */
   readonly maxOutputTokens: number;
 }
-/** 2026-08-18 那天的七个免费模型，按上下文容量从大到小排。 */
+/** The seven free models as of 2026-08-18, largest context first. */
 declare const FALLBACK_MODELS: readonly ZenModel[];
 /**
- * 在一份目录里按 id 找条目。
- * @param models - 当前目录（实时或快照）。
- * @param id - 模型 id。
- * @returns 命中的条目；未收录时 undefined —— 不代表不可用，见模块注释。
+ * Find an entry by id in a catalog.
+ * @param models - The current catalog (live or snapshot).
+ * @param id - Model id.
+ * @returns The matching entry, or undefined if absent — which does not mean
+ *          unavailable; see the module comment.
  */
 declare function findModel(models: readonly ZenModel[], id: string): ZenModel | undefined;
 //#endregion
 //#region src/discovery.d.ts
 
-/** 目录来源，出现在日志里，便于判断用户看到的是不是实时数据。 */
+/** Catalog source, surfaced in logs so it is clear whether the user saw live data. */
 type CatalogSource = 'live' | 'cache' | 'fallback';
 interface CatalogResult {
   readonly models: readonly ZenModel[];
   readonly source: CatalogSource;
 }
-/** models.dev 的模型条目，只声明用到的字段。 */
+/** A models.dev entry; only the fields we use are declared. */
 interface DevModel {
   id?: string;
   name?: string;
@@ -65,74 +67,76 @@ interface DevApi {
   };
 }
 interface DiscoveryOptions {
-  /** models.dev 全量元数据地址。 */
+  /** models.dev full metadata URL. */
   readonly catalogUrl: string;
-  /** zen 的模型列表地址（`${baseURL}/models`）。 */
+  /** Zen's model list URL (`${baseURL}/models`). */
   readonly modelsUrl: string;
-  /** 目录缓存时长。 */
+  /** Catalog TTL. */
   readonly ttlMs: number;
-  /** 单次上游请求超时。 */
+  /** Timeout for a single upstream request. */
   readonly timeoutMs: number;
 }
 /**
- * 目录服务：一个插件实例一个。
+ * Catalog service: one per plugin instance.
  *
- * 拉取失败**不抛**——目录拉不到只该让选择器少几项，不该让已经选好模型的对话发不出去。
+ * Fetch failures **never throw** — a missing catalog should cost the picker a few entries, not stop a conversation whose model is already chosen.
  */
 declare class Catalog {
   #private;
   /**
-   * @param options - 上游地址与缓存参数。
-   * @param now - 取当前时间，测试可注入。
+   * @param options - Upstream URLs and cache parameters.
+   * @param now - Current-time source; injectable for tests.
    */
   constructor(options: DiscoveryOptions, now?: () => number);
   /**
-   * 当前已知的目录，**不发网络请求**。
+   * The catalog as currently known, **without any network request**.
    *
-   * 给发请求那条路径用：模型上限只影响 `max_tokens` 这一个字段，为它去等一次
-   * 目录拉取，等于给每轮对话平白加一个网络往返。缓存没热就用快照。
-   * @returns 缓存目录，或随包快照。
+   * For the request path: the model cap affects only the `max_tokens` field, and waiting
+   * on a catalog fetch for it would add a network round trip to every turn. A cold cache
+   * uses the snapshot.
+   * @returns The cached catalog, or the bundled snapshot.
    */
   peek(): readonly ZenModel[];
   /**
-   * 取免费模型目录。
-   * @param signal - 调用方的取消信号。
-   * @returns 目录与它的来源；永不抛。
+   * Get the free-model catalog.
+   * @param signal - The caller's abort signal.
+   * @returns The catalog and its source. Never throws.
    */
   list(signal?: AbortSignal): Promise<CatalogResult>;
 }
 /**
- * 从 models.dev 的 opencode 段筛出免费模型。
+ * Select the free models from models.dev's opencode section.
  *
- * 判据是 `cost.input === 0 && cost.output === 0`，不是 id 的 `-free` 后缀 ——
- * 后缀是命名习惯（`big-pickle` 就没有），价格才是事实。
+ * The test is `cost.input === 0 && cost.output === 0`, not the id's `-free` suffix —
+ * the suffix is a naming habit (`big-pickle` has none); price is the fact.
  *
- * @param dev - models.dev 响应。
- * @param available - zen 当前在售的 id；undefined 表示这一路没拿到，不做过滤。
- * @returns 按上下文容量降序的目录。
+ * @param dev - The models.dev response.
+ * @param available - Ids Zen currently offers; undefined means that source failed, so no filtering.
+ * @returns The catalog, largest context first.
  */
 declare function freeModels(dev: DevApi, available?: ReadonlySet<string>): readonly ZenModel[];
 //#endregion
 //#region src/adapter.d.ts
-/** 本适配器持有的连接事实，每次请求现取，改配置不必重启。 */
+/** Connection facts held by this adapter, read per request so config changes need no restart. */
 interface ZenConnection {
-  /** 端点根，含 `/v1`。 */
+  /** Endpoint root, including `/v1`. */
   readonly baseURL: string;
-  /** 单次响应的输出上限；模型自己的上限更小时以模型为准。 */
+  /** Output cap per response. The model's own lower cap wins. */
   readonly maxTokens?: number;
-  /** 目录里没有该模型时用的上下文容量。 */
+  /** Context window used when the catalog has no entry for the model. */
   readonly defaultContextWindow: number;
 }
-/** 构造适配器所需的一切。 */
+/** Everything needed to construct the adapter. */
 interface ZenAdapterOptions {
-  /** 每次请求现取连接事实。 */
+  /** Reads connection facts per request. */
   readonly options: () => ZenConnection;
   /**
-   * 取 API key。**允许返回 undefined** —— Zen 的免费模型不带 key 也能调，
-   * 只是走一个按来源限流的公共额度。这正是本插件装上就能用的原因。
+   * Resolve the API key. **Returning undefined is allowed** — Zen's free models work
+   * without a key, just on a shared, source-rate-limited quota. That is exactly why
+   * this plugin works the moment it is installed.
    */
   readonly resolveApiKey: () => Promise<string | undefined>;
-  /** 免费模型目录，从上游现拉并带缓存与快照兜底。 */
+  /** Free-model catalog, fetched live with caching and a snapshot fallback. */
   readonly catalog: Catalog;
 }
 declare class ZenAdapter extends LlmAdapter {
@@ -145,39 +149,40 @@ declare class ZenAdapter extends LlmAdapter {
 }
 //#endregion
 //#region src/index.d.ts
-/** 插件名（loader 行的 name）。 */
+/** Plugin name (the `name` of the loader entry). */
 declare const name = "opencode-zen";
-/** 等 LLM 服务就绪；没有它这个插件没有意义。 */
+/** Wait for the LLM service; without it this plugin is pointless. */
 declare const inject: string[];
-/** 本插件拥有的那一条 provider 路由。 */
+/** The provider route this plugin owns. */
 declare const PROVIDER = "opencode-zen";
-/** Zen 的端点根。models.dev 上 `opencode` provider 登记的也是它。 */
+/** Zen's endpoint root — also what models.dev lists for the `opencode` provider. */
 declare const DEFAULT_BASE_URL = "https://opencode.ai/zen/v1";
-/** 免费判定的数据源：Zen 自己的 `/models` 不返回价格，只能从这里看。 */
+/** Source of the free/paid verdict: Zen's own `/models` omits pricing. */
 declare const DEFAULT_CATALOG_URL = "https://models.dev/api.json";
-/** 与 opencode 官方一致的凭证变量名，两边可共用一个 key。 */
+/** Same credential variable opencode uses, so one key serves both. */
 declare const DEFAULT_API_KEY_ENV = "OPENCODE_API_KEY";
-/** 插件配置，全部可选：什么都不写就是「匿名用免费模型」。 */
+/** Plugin config, all optional. Empty config means "anonymous access to free models". */
 interface Config {
-  /** 端点根，含 `/v1`。默认 {@link DEFAULT_BASE_URL}。 */
+  /** Endpoint root, including `/v1`. Defaults to {@link DEFAULT_BASE_URL}. */
   baseURL?: string;
   /**
-   * 凭证引用（环境变量名），每次请求现取；默认 `OPENCODE_API_KEY`。
-   * **取不到不算错误** —— 免费模型匿名可用，只是额度按来源共享。
+   * Credential reference (an env var name), read per request. Defaults to
+   * `OPENCODE_API_KEY`. **A missing key is not an error** — free models work
+   * anonymously, just on a shared quota.
    */
   apiKeyEnv?: string;
-  /** 免费模型元数据来源。默认 {@link DEFAULT_CATALOG_URL}。 */
+  /** Where free-model metadata comes from. Defaults to {@link DEFAULT_CATALOG_URL}. */
   catalogUrl?: string;
-  /** 目录缓存时长（毫秒），默认一小时。 */
+  /** Catalog TTL in milliseconds. Defaults to one hour. */
   catalogTtlMs?: number;
-  /** 目录请求超时（毫秒），默认 8 秒。 */
+  /** Catalog request timeout in milliseconds. Defaults to 8s. */
   catalogTimeoutMs?: number;
-  /** 单次响应输出上限；模型自身上限更小时以模型为准。 */
+  /** Output cap per response. The model's own lower cap wins. */
   maxTokens?: number;
-  /** 目录查不到该模型时假定的上下文容量，默认 128,000。 */
+  /** Context window assumed when the catalog has no entry. Defaults to 128,000. */
   defaultContextWindow?: number;
 }
-/** 校验并补全配置。越界一律在这里失败，而不是等到发请求时才炸。 */
+/** Validate and complete the config. Out-of-range values fail here, not mid-request. */
 declare function resolveConfig(config: Config): {
   connection: ZenConnection;
   apiKeyEnv: string;

@@ -1,7 +1,7 @@
 {
   "name": "dsh-opencode-zen",
   "version": "0.1.0",
-  "description": "OpenCode Zen 的免费模型接进 DeepSeek Harness：一个 LLM provider 插件，装上即可在模型列表里选 7 个免费模型",
+  "description": "Bring OpenCode Zen's free models to DeepSeek Harness — an LLM provider plugin that adds 7 free models to the picker, no API key required",
   "keywords": [
     "dsh",
     "deepseek-harness",

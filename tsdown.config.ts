@@ -1,11 +1,11 @@
 import { defineConfig } from 'tsdown'
 
 /**
- * 打成一个 ESM 入口。
+ * Bundle into a single ESM entry.
  *
- * harness 的包全部 external：本插件跑在 harness 进程内，`@deepseek-ai/dsh-llm`
- * 的实现必须解析到宿主那一份 —— 打进来会得到第二个 `LlmAdapter` 基类，
- * `instanceof` 判定和服务注册都会失效。
+ * All harness packages stay external: this plugin runs inside the harness process, so
+ * `@deepseek-ai/dsh-llm` must resolve to the host's copy. Bundling it would create a
+ * second `LlmAdapter` base class, breaking `instanceof` checks and service registration.
  */
 export default defineConfig({
   entry: ['src/index.ts'],

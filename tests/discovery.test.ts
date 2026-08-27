@@ -1,5 +1,5 @@
 /**
- * 目录发现：免费判定、双源交叉、以及「上游不可用时不能把插件拖垮」。
+ * Catalog discovery: the free verdict, the two-source intersection, and "an unreachable upstream must not drag the plugin down".
  */
 
 import { test } from 'node:test'
@@ -20,33 +20,33 @@ const devApi = {
   },
 }
 
-test('免费判定看价格而不是 id 后缀 —— big-pickle 没有 -free 也是免费', () => {
+test('the free verdict reads price, not the id suffix — big-pickle is free without -free', () => {
   const ids = freeModels(devApi).map(m => m.id)
   assert.ok(ids.includes('big-pickle'))
-  assert.ok(!ids.includes('claude-opus-5'), '付费模型不该进目录')
+  assert.ok(!ids.includes('claude-opus-5'), 'paid models must not enter the catalog')
 })
 
-test('按上下文容量降序 —— 免费模型最常撞的墙是上下文不够', () => {
+test('sorted by context size, largest first — the wall free models hit most often', () => {
   assert.deepEqual(freeModels(devApi).map(m => m.contextWindow), [1_000_000, 200_000, 100_000])
 })
 
-test('🔴 zen 已下架的条目被剔除 —— 限时免费的模型迟早走这条路', () => {
+test('🔴 entries withdrawn by zen are dropped — the eventual fate of every time-limited free model', () => {
   const live = new Set(['big-pickle', 'nemotron-3-ultra-free', 'claude-opus-5'])
   const ids = freeModels(devApi, live).map(m => m.id)
   assert.deepEqual(ids, ['nemotron-3-ultra-free', 'big-pickle'])
   assert.ok(!ids.includes('retired-free'))
 })
 
-test('zen 那一路拿不到时不做过滤 —— 「无法确认」不等于「全都没了」', () => {
+test('no filtering when the zen source fails — "unconfirmed" is not "all gone"', () => {
   assert.equal(freeModels(devApi, undefined).length, 3)
 })
 
-test('缺容量的条目跳过：没有 contextWindow 的目录项对压缩策略没用', () => {
+test('entries without a context window are skipped: they are useless to the compaction strategy', () => {
   const broken = { opencode: { models: { x: { id: 'x', cost: { input: 0, output: 0 } } } } }
   assert.deepEqual(freeModels(broken), [])
 })
 
-test('响应结构不认识时返回空，让调用方回落快照而不是抛', () => {
+test('an unrecognised response shape returns empty, so the caller falls back to the snapshot instead of throwing', () => {
   assert.deepEqual(freeModels({}), [])
   assert.deepEqual(freeModels({ opencode: {} }), [])
 })
@@ -64,7 +64,7 @@ async function serve(
   }
 }
 
-test('两个源都通时给出实时目录', async () => {
+test('with both sources reachable, the catalog is live', async () => {
   const server = await serve((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify(req.url === '/models'
@@ -86,7 +86,7 @@ test('两个源都通时给出实时目录', async () => {
   }
 })
 
-test('第二次在 TTL 内走缓存，不再打上游', async () => {
+test('a second call within the TTL is served from cache, not upstream', async () => {
   let hits = 0
   const server = await serve((req, res) => {
     hits += 1
@@ -104,13 +104,13 @@ test('第二次在 TTL 内走缓存，不再打上游', async () => {
     const first = hits
     const second = await catalog.list()
     assert.equal(second.source, 'cache')
-    assert.equal(hits, first, '缓存期内不该再打上游')
+    assert.equal(hits, first, 'no upstream calls while the cache is warm')
   } finally {
     await server.close()
   }
 })
 
-test('🔴 上游挂了回落到随包快照，而不是抛错或给空列表', async () => {
+test('🔴 a dead upstream falls back to the bundled snapshot, not an error or an empty list', async () => {
   const server = await serve((_req, res) => { res.writeHead(500); res.end('boom') })
   try {
     const catalog = new Catalog({
@@ -127,7 +127,7 @@ test('🔴 上游挂了回落到随包快照，而不是抛错或给空列表', 
   }
 })
 
-test('连不上也一样回落，不抛', async () => {
+test('a connection failure falls back the same way, without throwing', async () => {
   const catalog = new Catalog({
     catalogUrl: 'http://127.0.0.1:1/api.json',
     modelsUrl: 'http://127.0.0.1:1/models',
@@ -139,7 +139,7 @@ test('连不上也一样回落，不抛', async () => {
   assert.ok(result.models.length > 0)
 })
 
-test('peek 不发请求：缓存没热时直接给快照', async () => {
+test('peek makes no request: a cold cache returns the snapshot directly', async () => {
   const catalog = new Catalog({
     catalogUrl: 'http://127.0.0.1:1/api.json',
     modelsUrl: 'http://127.0.0.1:1/models',
@@ -149,7 +149,7 @@ test('peek 不发请求：缓存没热时直接给快照', async () => {
   assert.deepEqual(catalog.peek(), FALLBACK_MODELS)
 })
 
-test('并发调用只打一次上游', async () => {
+test('concurrent calls hit upstream once', async () => {
   let hits = 0
   const server = await serve((req, res) => {
     hits += 1
@@ -166,8 +166,8 @@ test('并发调用只打一次上游', async () => {
       timeoutMs: 5000,
     })
     await Promise.all([catalog.list(), catalog.list(), catalog.list()])
-    // 一轮 = 两个源各一次；去重生效的话不会变成六次。
-    assert.equal(hits, 2, `期望两次请求，实际 ${hits}`)
+    // One round = one call per source; with dedup working this never becomes six.
+    assert.equal(hits, 2, `expected two requests, got ${hits}`)
   } finally {
     await server.close()
   }

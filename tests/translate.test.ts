@@ -1,9 +1,10 @@
 /**
- * harness 消息 → OpenAI 线格式。
+ * Harness messages → the OpenAI wire format.
  *
- * 核心差异是一对多：harness 一条消息带一个内容块数组，而工具结果在 OpenAI 那边
- * 必须单独成条 `role: "tool"`，且要排在发起调用的 assistant 之后。顺序错了模型
- * 会看到一个没有来由的结果。
+ * The core difference is one-to-many: a harness message carries an array of content
+ * blocks, while on the OpenAI side a tool result must be its own `role: "tool"` message
+ * ordered after the assistant that issued the call. Get the order wrong and the model
+ * sees a result with no cause.
  */
 
 import { test } from 'node:test'
@@ -15,83 +16,83 @@ function message(role: Message['role'], content: ContentBlock[]): Message {
   return { id: 'm1' as MessageId, role, content, source: { kind: 'user' } }
 }
 
-test('system 提示排在最前', () => {
-  const wire = toWireMessages([message('user', [{ type: 'text', text: 'hi' }])], '你是助手')
+test('the system prompt comes first', () => {
+  const wire = toWireMessages([message('user', [{ type: 'text', text: 'hi' }])], 'you are an assistant')
   assert.deepEqual(wire, [
-    { role: 'system', content: '你是助手' },
+    { role: 'system', content: 'you are an assistant' },
     { role: 'user', content: 'hi' },
   ])
 })
 
-test('空 system 不产生空消息', () => {
+test('an empty system prompt produces no message', () => {
   assert.equal(toWireMessages([message('user', [{ type: 'text', text: 'hi' }])], '').length, 1)
   assert.equal(toWireMessages([message('user', [{ type: 'text', text: 'hi' }])]).length, 1)
 })
 
-test('同一条里的正文与工具调用合成一条 assistant', () => {
+test('text and tool calls in one message merge into a single assistant message', () => {
   const wire = toWireMessages([message('assistant', [
-    { type: 'text', text: '我查一下' },
+    { type: 'text', text: 'let me check' },
     { type: 'tool-call', id: 'c1' as CallId, name: 'read', arguments: '{"path":"a"}' },
   ])])
   assert.deepEqual(wire, [{
     role: 'assistant',
-    content: '我查一下',
+    content: 'let me check',
     tool_calls: [{ id: 'c1', type: 'function', function: { name: 'read', arguments: '{"path":"a"}' } }],
   }])
 })
 
-test('🔴 工具结果单独成条，且排在发起调用的那条之后', () => {
+test('🔴 a tool result becomes its own message, ordered after the call that issued it', () => {
   const wire = toWireMessages([
     message('assistant', [{ type: 'tool-call', id: 'c1' as CallId, name: 'read', arguments: '{}' }]),
-    message('user', [{ type: 'tool-result', toolCallId: 'c1' as CallId, content: [{ type: 'text', text: '文件内容' }] }]),
+    message('user', [{ type: 'tool-result', toolCallId: 'c1' as CallId, content: [{ type: 'text', text: 'file contents' }] }]),
   ])
   assert.deepEqual(wire, [
     { role: 'assistant', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'read', arguments: '{}' } }] },
-    { role: 'tool', tool_call_id: 'c1', content: '文件内容' },
+    { role: 'tool', tool_call_id: 'c1', content: 'file contents' },
   ])
 })
 
-test('一条消息里同时有正文和工具结果时，正文先冲出去', () => {
+test('when one message holds both text and a tool result, the text flushes first', () => {
   const wire = toWireMessages([message('user', [
-    { type: 'text', text: '先说一句' },
-    { type: 'tool-result', toolCallId: 'c1' as CallId, content: [{ type: 'text', text: '结果' }] },
+    { type: 'text', text: 'one word first' },
+    { type: 'tool-result', toolCallId: 'c1' as CallId, content: [{ type: 'text', text: 'result' }] },
   ])])
   assert.deepEqual(wire.map(m => m.role), ['user', 'tool'])
 })
 
-test('推理块不回传 —— chat/completions 没有承载它的请求字段', () => {
+test('reasoning blocks are not sent back — chat/completions has no field for them', () => {
   const wire = toWireMessages([message('assistant', [
-    { type: 'reasoning', text: '内心戏' },
-    { type: 'text', text: '结论' },
+    { type: 'reasoning', text: 'inner monologue' },
+    { type: 'text', text: 'conclusion' },
   ])])
-  assert.deepEqual(wire, [{ role: 'assistant', content: '结论' }])
+  assert.deepEqual(wire, [{ role: 'assistant', content: 'conclusion' }])
 })
 
-test('只有推理块的消息整条消失，而不是发一条空消息', () => {
-  assert.deepEqual(toWireMessages([message('assistant', [{ type: 'reasoning', text: '只想不说' }])]), [])
+test('a reasoning-only message disappears entirely rather than sending an empty one', () => {
+  assert.deepEqual(toWireMessages([message('assistant', [{ type: 'reasoning', text: 'thought, not said' }])]), [])
 })
 
-test('工具结果里的图片给出占位说明，而不是静默丢掉', () => {
+test('an image in a tool result gets a placeholder instead of being dropped silently', () => {
   const wire = toWireMessages([message('user', [
     { type: 'tool-result', toolCallId: 'c1' as CallId, content: [
-      { type: 'text', text: '截图如下' },
+      { type: 'text', text: 'screenshot below' },
       { type: 'image', attachment: {} },
     ] },
   ])])
-  assert.match(String(wire[0]?.content), /截图如下[\s\S]*image omitted/)
+  assert.match(String(wire[0]?.content), /screenshot below[\s\S]*image omitted/)
 })
 
-test('未知内容块被跳过，不让整轮请求发不出去', () => {
+test('unknown content blocks are skipped rather than blocking the whole request', () => {
   const exotic = { type: 'video', src: 'x' } as unknown as ContentBlock
-  const wire = toWireMessages([message('user', [exotic, { type: 'text', text: '还在' }])])
-  assert.deepEqual(wire, [{ role: 'user', content: '还在' }])
+  const wire = toWireMessages([message('user', [exotic, { type: 'text', text: 'still here' }])])
+  assert.deepEqual(wire, [{ role: 'user', content: 'still here' }])
 })
 
-test('工具 schema 转成 OpenAI tools；没有工具时返回 undefined 而不是空数组', () => {
+test('tool schemas convert to OpenAI tools; no tools returns undefined, not an empty array', () => {
   assert.equal(toWireTools(undefined), undefined)
   assert.equal(toWireTools([]), undefined)
-  assert.deepEqual(toWireTools([{ name: 'read', description: '读文件', inputSchema: { type: 'object' } }]), [{
+  assert.deepEqual(toWireTools([{ name: 'read', description: 'read a file', inputSchema: { type: 'object' } }]), [{
     type: 'function',
-    function: { name: 'read', description: '读文件', parameters: { type: 'object' } },
+    function: { name: 'read', description: 'read a file', parameters: { type: 'object' } },
   }])
 })

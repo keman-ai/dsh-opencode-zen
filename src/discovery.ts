@@ -1,23 +1,25 @@
 /**
- * 免费模型目录的发现：从上游现拉，而不是把清单焊死在代码里。
+ * Free-model catalog discovery: fetched live from upstream instead of welded into the code.
  *
- * 为什么要两个数据源：
- * - `https://opencode.ai/zen/v1/models` 只回 `{id, object, created, owned_by}`，
- *   **没有价格**，光靠它分不出哪些免费；
- * - `https://models.dev/api.json` 的 `opencode` 段有 `cost` 和 `limit`（opencode
- *   自己读的也是这份），但它是社区维护的镜像，可能比网关落后。
+ * Why two sources:
+ * - `https://opencode.ai/zen/v1/models` returns only `{id, object, created, owned_by}` —
+ *   **no pricing**, so it alone cannot tell which models are free;
+ * - `https://models.dev/api.json`'s `opencode` section has `cost` and `limit` (the same
+ *   data opencode itself reads), but it is a community mirror and can lag the gateway.
  *
- * 所以判定是：**models.dev 定「哪些免费、多大上下文」，zen 定「现在还有没有」**。
- * 两边都拿到就取交集；zen 那边拿不到就只信 models.dev；都拿不到才回落到随包快照。
+ * Hence the rule: **models.dev decides which are free and how large; zen decides which
+ * still exist.** With both, intersect them; without zen, trust models.dev alone; with
+ * neither, fall back to the bundled snapshot.
  *
- * 目录始终是**建议性**的：harness 允许请求未列出的模型 id，所以这里的过期或缺失
- * 不会挡住任何人——最坏情况是选择器里少几个条目，手填 id 照样能用。
+ * The catalog is always **advisory**: the harness allows requesting an unlisted model id,
+ * so staleness or gaps block nobody — at worst the picker shows fewer entries, and a
+ * hand-typed id still works.
  */
 
 import { FALLBACK_MODELS } from './catalog.ts'
 import type { ZenModel } from './catalog.ts'
 
-/** 目录来源，出现在日志里，便于判断用户看到的是不是实时数据。 */
+/** Catalog source, surfaced in logs so it is clear whether the user saw live data. */
 export type CatalogSource = 'live' | 'cache' | 'fallback'
 
 export interface CatalogResult {
@@ -25,7 +27,7 @@ export interface CatalogResult {
   readonly source: CatalogSource
 }
 
-/** models.dev 的模型条目，只声明用到的字段。 */
+/** A models.dev entry; only the fields we use are declared. */
 interface DevModel {
   id?: string
   name?: string
@@ -43,13 +45,13 @@ interface ZenModelList {
 }
 
 export interface DiscoveryOptions {
-  /** models.dev 全量元数据地址。 */
+  /** models.dev full metadata URL. */
   readonly catalogUrl: string
-  /** zen 的模型列表地址（`${baseURL}/models`）。 */
+  /** Zen's model list URL (`${baseURL}/models`). */
   readonly modelsUrl: string
-  /** 目录缓存时长。 */
+  /** Catalog TTL. */
   readonly ttlMs: number
-  /** 单次上游请求超时。 */
+  /** Timeout for a single upstream request. */
   readonly timeoutMs: number
 }
 
@@ -59,13 +61,13 @@ interface CacheRow {
 }
 
 /**
- * 目录服务：一个插件实例一个。
+ * Catalog service: one per plugin instance.
  *
- * 拉取失败**不抛**——目录拉不到只该让选择器少几项，不该让已经选好模型的对话发不出去。
+ * Fetch failures **never throw** — a missing catalog should cost the picker a few entries, not stop a conversation whose model is already chosen.
  */
 export class Catalog {
   #cache: CacheRow | undefined
-  /** 进行中的拉取，用于并发去重：设置页一打开会同时问好几次。 */
+  /** In-flight fetch, for deduplication: opening the settings page asks several times at once. */
   #inflight: Promise<readonly ZenModel[]> | undefined
   #lastFailureAt = 0
 
@@ -73,38 +75,40 @@ export class Catalog {
   readonly #now: () => number
 
   /**
-   * @param options - 上游地址与缓存参数。
-   * @param now - 取当前时间，测试可注入。
+   * @param options - Upstream URLs and cache parameters.
+   * @param now - Current-time source; injectable for tests.
    */
   constructor(options: DiscoveryOptions, now: () => number = Date.now) {
-    // 不用构造器参数属性：Node 的类型剥离是「只删不生成」，参数属性要生成赋值语句，
-    // 直接 `node --test *.ts` 会以 ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX 失败。
+    // No constructor parameter properties: Node's type stripping only erases, never emits,
+    // and parameter properties would need generated assignments — `node --test *.ts`
+    // fails with ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX.
     this.#options = options
     this.#now = now
   }
 
   /**
-   * 当前已知的目录，**不发网络请求**。
+   * The catalog as currently known, **without any network request**.
    *
-   * 给发请求那条路径用：模型上限只影响 `max_tokens` 这一个字段，为它去等一次
-   * 目录拉取，等于给每轮对话平白加一个网络往返。缓存没热就用快照。
-   * @returns 缓存目录，或随包快照。
+   * For the request path: the model cap affects only the `max_tokens` field, and waiting
+   * on a catalog fetch for it would add a network round trip to every turn. A cold cache
+   * uses the snapshot.
+   * @returns The cached catalog, or the bundled snapshot.
    */
   peek(): readonly ZenModel[] {
     return this.#cache?.models ?? FALLBACK_MODELS
   }
 
   /**
-   * 取免费模型目录。
-   * @param signal - 调用方的取消信号。
-   * @returns 目录与它的来源；永不抛。
+   * Get the free-model catalog.
+   * @param signal - The caller's abort signal.
+   * @returns The catalog and its source. Never throws.
    */
   async list(signal?: AbortSignal): Promise<CatalogResult> {
     const cached = this.#cache
     if (cached !== undefined && this.#now() - cached.at < this.#options.ttlMs) {
       return { models: cached.models, source: 'cache' }
     }
-    // 刚失败过就先别再打：设置页刷新一次会连着问，断网时不该变成一串超时。
+    // Back off after a recent failure: one settings refresh asks repeatedly, and offline that would become a run of timeouts.
     if (this.#now() - this.#lastFailureAt < this.#options.timeoutMs) {
       return { models: cached?.models ?? FALLBACK_MODELS, source: cached === undefined ? 'fallback' : 'cache' }
     }
@@ -144,27 +148,27 @@ export class Catalog {
       }
       return await response.json() as T
     } catch {
-      // 目录是可有可无的增强，任何失败都退回快照，不惊动调用方。
+      // The catalog is an optional enhancement: any failure falls back to the snapshot silently.
       return undefined
     }
   }
 }
 
-/** zen 当前在售的 id 集合；拿不到时 undefined（表示「无法确认」，不是「空」）。 */
+/** The ids Zen currently offers; undefined when unavailable — meaning "unconfirmed", not "empty". */
 function liveIds(list: ZenModelList | undefined): ReadonlySet<string> | undefined {
   const ids = list?.data?.map(entry => entry.id).filter((id): id is string => typeof id === 'string' && id.length > 0)
   return ids === undefined || ids.length === 0 ? undefined : new Set(ids)
 }
 
 /**
- * 从 models.dev 的 opencode 段筛出免费模型。
+ * Select the free models from models.dev's opencode section.
  *
- * 判据是 `cost.input === 0 && cost.output === 0`，不是 id 的 `-free` 后缀 ——
- * 后缀是命名习惯（`big-pickle` 就没有），价格才是事实。
+ * The test is `cost.input === 0 && cost.output === 0`, not the id's `-free` suffix —
+ * the suffix is a naming habit (`big-pickle` has none); price is the fact.
  *
- * @param dev - models.dev 响应。
- * @param available - zen 当前在售的 id；undefined 表示这一路没拿到，不做过滤。
- * @returns 按上下文容量降序的目录。
+ * @param dev - The models.dev response.
+ * @param available - Ids Zen currently offers; undefined means that source failed, so no filtering.
+ * @returns The catalog, largest context first.
  */
 export function freeModels(dev: DevApi, available?: ReadonlySet<string>): readonly ZenModel[] {
   const models = dev.opencode?.models
@@ -178,7 +182,7 @@ export function freeModels(dev: DevApi, available?: ReadonlySet<string>): readon
       continue
     }
     if (available !== undefined && !available.has(id)) {
-      // models.dev 还留着，但网关已经下架了——限时免费的模型迟早走这条路。
+      // Still on models.dev but already withdrawn by the gateway — the eventual fate of every time-limited free model.
       continue
     }
     const context = model.limit?.context
@@ -194,6 +198,6 @@ export function freeModels(dev: DevApi, available?: ReadonlySet<string>): readon
       maxOutputTokens: typeof output === 'number' && output > 0 ? output : context,
     })
   }
-  // 容量大的排前面：选免费模型的人最常撞到的墙是上下文不够。
+  // Largest first: the wall people hit most often when picking a free model is context size.
   return out.sort((a, b) => b.contextWindow - a.contextWindow)
 }

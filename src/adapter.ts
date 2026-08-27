@@ -1,12 +1,12 @@
 /**
- * OpenCode Zen 的 `LlmAdapter`：把 OpenAI 兼容的 `/chat/completions` 流翻译成
- * harness 的块序列。
+ * The `LlmAdapter` for OpenCode Zen: translates an OpenAI-compatible
+ * `/chat/completions` stream into the harness block sequence.
  *
- * 两边对「流」的建模不同，这里的状态机就是为抹平这个差异而存在：
- * OpenAI 吐的是**扁平的增量**（`delta.content` / `delta.reasoning_content` /
- * `delta.tool_calls[i]`），harness 要的是**成对的块**（`block-start` → 若干
- * delta → `block-end` 带完整块）。所以适配器必须自己判断「一个块什么时候开始、
- * 什么时候结束」——上游从不明说。
+ * The two sides model "a stream" differently, and this state machine exists to bridge
+ * that: OpenAI emits **flat deltas** (`delta.content` / `delta.reasoning_content` /
+ * `delta.tool_calls[i]`), while the harness wants **paired blocks** (`block-start` →
+ * deltas → `block-end` carrying the full block). So the adapter must decide when a
+ * block starts and ends — upstream never says.
  */
 
 import { attributionHeaders, LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
@@ -23,26 +23,27 @@ import { toWireMessages, toWireTools } from './translate.ts'
 import { consume } from './stream.ts'
 import type { WireError, WireRequest } from './wire.ts'
 
-/** 本适配器持有的连接事实，每次请求现取，改配置不必重启。 */
+/** Connection facts held by this adapter, read per request so config changes need no restart. */
 export interface ZenConnection {
-  /** 端点根，含 `/v1`。 */
+  /** Endpoint root, including `/v1`. */
   readonly baseURL: string
-  /** 单次响应的输出上限；模型自己的上限更小时以模型为准。 */
+  /** Output cap per response. The model's own lower cap wins. */
   readonly maxTokens?: number
-  /** 目录里没有该模型时用的上下文容量。 */
+  /** Context window used when the catalog has no entry for the model. */
   readonly defaultContextWindow: number
 }
 
-/** 构造适配器所需的一切。 */
+/** Everything needed to construct the adapter. */
 export interface ZenAdapterOptions {
-  /** 每次请求现取连接事实。 */
+  /** Reads connection facts per request. */
   readonly options: () => ZenConnection
   /**
-   * 取 API key。**允许返回 undefined** —— Zen 的免费模型不带 key 也能调，
-   * 只是走一个按来源限流的公共额度。这正是本插件装上就能用的原因。
+   * Resolve the API key. **Returning undefined is allowed** — Zen's free models work
+   * without a key, just on a shared, source-rate-limited quota. That is exactly why
+   * this plugin works the moment it is installed.
    */
   readonly resolveApiKey: () => Promise<string | undefined>
-  /** 免费模型目录，从上游现拉并带缓存与快照兜底。 */
+  /** Free-model catalog, fetched live with caching and a snapshot fallback. */
   readonly catalog: Catalog
 }
 
@@ -81,8 +82,9 @@ export class ZenAdapter extends LlmAdapter {
     const known = findModel(models, model)
     const connection = this.#options()
     if (known === undefined) {
-      // 目录是建议性的：没收录不等于不能用（Zen 会上新模型，而这张表是编译期常量）。
-      // 给出配置里的默认容量，让上层的压缩策略仍有依据可用。
+      // The catalog is advisory: absence does not mean unusable (Zen adds models, and this
+      // table is a compile-time constant). Fall back to the configured default so the
+      // layer above still has a number to base compaction on.
       return {
         provider,
         id: model,
@@ -105,8 +107,8 @@ export class ZenAdapter extends LlmAdapter {
   override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const connection = this.#options()
     const apiKey = await this.#resolveApiKey()
-    // peek 而不是 list：目录只用来查模型自己的输出上限，不值得为它在每轮对话前
-    // 多等一个网络往返。
+    // peek, not list: the catalog is only consulted for the model's own output cap —
+    // not worth an extra network round trip before every turn.
     const model = findModel(this.#catalog.peek(), options.model)
 
     const body: WireRequest = {
@@ -136,8 +138,8 @@ export class ZenAdapter extends LlmAdapter {
         'content-type': 'application/json',
         accept: 'text/event-stream',
         ...attributionHeaders(),
-        // 没有 key 就干脆不发这个头。发 `Bearer `（空值）会被部分网关判成
-        // 「凭证格式错误」而 401，比匿名请求还糟。
+        // With no key, omit the header entirely. Sending `Bearer ` (empty) makes some
+        // gateways return 401 for a malformed credential — worse than an anonymous call.
         ...apiKey === undefined ? {} : { authorization: `Bearer ${apiKey}` },
       },
       body: JSON.stringify(body),
@@ -155,7 +157,7 @@ export class ZenAdapter extends LlmAdapter {
   }
 }
 
-/** 请求上限、部署上限、模型自身上限取最小；都没有就不发这个字段。 */
+/** Take the minimum of request cap, deployment cap and the model's own cap; omit the field if none exist. */
 function resolveMaxTokens(
   requested: number | undefined,
   configured: number | undefined,
@@ -172,10 +174,11 @@ function trimSlash(url: string): string {
 }
 
 /**
- * 把 HTTP 失败翻译成能照着做事的错误。
+ * Translate an HTTP failure into an error the user can act on.
  *
- * 免费额度耗尽是本插件最常见的失败，而网关只回一句「Rate limit exceeded」，
- * 不说清「配个 key 就能继续」——这里补上，否则用户只会以为插件坏了。
+ * Exhausted free quota is this plugin's most common failure, and the gateway only says
+ * "Rate limit exceeded" without mentioning that a key would unblock it. We add that
+ * here; otherwise users just conclude the plugin is broken.
  */
 async function describeFailure(response: Response, hadKey: boolean): Promise<LlmError> {
   const raw = await response.text().catch(() => '')
@@ -186,30 +189,30 @@ async function describeFailure(response: Response, hadKey: boolean): Promise<Llm
     kind = parsed.error?.type
     detail = parsed.error?.message ?? parsed.message ?? detail
   } catch {
-    // 非 JSON 错误体（网关 502 的 HTML 页之类）就用原文截断。
+    // Non-JSON error bodies (a gateway's 502 HTML page, say) are truncated verbatim.
   }
 
   if (response.status === 429) {
     const advice = hadKey
-      ? '稍后重试，或在 https://opencode.ai/zen 查看该账号的免费额度'
-      : '本插件当前在匿名调用 Zen，公共免费额度按来源限流；'
-        + '到 https://opencode.ai/zen 取一个 key 并设进 OPENCODE_API_KEY 可获得独立额度'
+      ? 'Retry later, or check this account\'s free quota at https://opencode.ai/zen'
+      : 'This plugin is calling Zen anonymously; the shared free quota is rate-limited by '
+        + 'source. Get a key at https://opencode.ai/zen and set OPENCODE_API_KEY for a private quota'
     return new LlmError(
-      `opencode-zen: 免费额度受限（${kind ?? 'rate limit'}）：${detail}。${advice}`,
+      `opencode-zen: free quota limited (${kind ?? 'rate limit'}): ${detail}. ${advice}`,
       'RATE_LIMIT',
     )
   }
   if (response.status === 401 || response.status === 403) {
     return new LlmError(
       hadKey
-        ? `opencode-zen: API key 被拒（HTTP ${response.status}）：${detail}`
-        : `opencode-zen: 该请求需要凭证（HTTP ${response.status}）：${detail}。`
-          + '到 https://opencode.ai/zen 取 key 并设进 OPENCODE_API_KEY',
+        ? `opencode-zen: API key rejected (HTTP ${response.status}): ${detail}`
+        : `opencode-zen: this request needs a credential (HTTP ${response.status}): ${detail}. `
+          + 'Get a key at https://opencode.ai/zen and set OPENCODE_API_KEY',
       hadKey ? 'INVALID_CREDENTIAL' : 'MISSING_CREDENTIAL',
     )
   }
   return new LlmError(
-    `opencode-zen: provider 返回 HTTP ${response.status}：${detail}`,
+    `opencode-zen: provider returned HTTP ${response.status}: ${detail}`,
     'PROVIDER_ERROR',
   )
 }

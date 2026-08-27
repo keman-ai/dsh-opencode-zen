@@ -1,12 +1,14 @@
 /**
- * 把 OpenCode Zen 的免费模型注册成 DeepSeek Harness 的一条 provider 路由。
+ * Registers OpenCode Zen's free models as a DeepSeek Harness provider route.
  *
- * 装上不配任何东西就能用：Zen 的免费模型允许匿名调用，只是走一个按来源限流的
- * 公共额度。想要独立额度再去 https://opencode.ai/zen 取 key，设进
- * `OPENCODE_API_KEY`（这个变量名跟 opencode 官方一致，两边可以共用同一个 key）。
+ * Works with zero configuration: Zen's free models accept anonymous calls against
+ * a shared, source-rate-limited quota. For a private quota, get a key at
+ * https://opencode.ai/zen and set `OPENCODE_API_KEY` (same variable name opencode
+ * uses, so one key serves both).
  *
- * 模型清单不写死在代码里 —— Zen 明说免费模型是限时提供，所以目录由
- * `discovery.ts` 从 models.dev 与 Zen 现拉，随包快照只在拉不到时兜底。
+ * The model list is not hardcoded — Zen states free models are time-limited, so
+ * `discovery.ts` fetches it live from models.dev and Zen. The bundled snapshot is
+ * only a fallback for when both are unreachable.
  *
  * @module dsh-opencode-zen
  */
@@ -23,55 +25,56 @@ export type { CatalogResult, CatalogSource, DiscoveryOptions } from './discovery
 export { FALLBACK_MODELS, findModel } from './catalog.ts'
 export type { ZenModel } from './catalog.ts'
 
-/** 插件名（loader 行的 name）。 */
+/** Plugin name (the `name` of the loader entry). */
 export const name = 'opencode-zen'
 
-/** 等 LLM 服务就绪；没有它这个插件没有意义。 */
+/** Wait for the LLM service; without it this plugin is pointless. */
 export const inject = ['llm']
 
-/** 本插件拥有的那一条 provider 路由。 */
+/** The provider route this plugin owns. */
 export const PROVIDER = 'opencode-zen'
 
-/** Zen 的端点根。models.dev 上 `opencode` provider 登记的也是它。 */
+/** Zen's endpoint root — also what models.dev lists for the `opencode` provider. */
 export const DEFAULT_BASE_URL = 'https://opencode.ai/zen/v1'
 
-/** 免费判定的数据源：Zen 自己的 `/models` 不返回价格，只能从这里看。 */
+/** Source of the free/paid verdict: Zen's own `/models` omits pricing. */
 export const DEFAULT_CATALOG_URL = 'https://models.dev/api.json'
 
-/** 与 opencode 官方一致的凭证变量名，两边可共用一个 key。 */
+/** Same credential variable opencode uses, so one key serves both. */
 export const DEFAULT_API_KEY_ENV = 'OPENCODE_API_KEY'
 
-/** 目录缓存时长：模型清单变化以周计，一小时足够新，也不会把上游打疼。 */
+/** Catalog TTL. The list changes on a weekly scale; an hour is fresh enough and gentle upstream. */
 const DEFAULT_CATALOG_TTL_MS = 60 * 60 * 1000
 
-/** 目录请求超时。目录是可有可无的增强，宁可快速回落到快照也不要卡住设置页。 */
+/** Catalog request timeout. The catalog is an enhancement — fall back to the snapshot fast rather than stall the settings page. */
 const DEFAULT_CATALOG_TIMEOUT_MS = 8000
 
-/** 目录里查不到该模型时假定的上下文容量。 */
+/** Context window assumed when the catalog has no entry for a model. */
 const DEFAULT_CONTEXT_WINDOW = 128_000
 
-/** 插件配置，全部可选：什么都不写就是「匿名用免费模型」。 */
+/** Plugin config, all optional. Empty config means "anonymous access to free models". */
 export interface Config {
-  /** 端点根，含 `/v1`。默认 {@link DEFAULT_BASE_URL}。 */
+  /** Endpoint root, including `/v1`. Defaults to {@link DEFAULT_BASE_URL}. */
   baseURL?: string
   /**
-   * 凭证引用（环境变量名），每次请求现取；默认 `OPENCODE_API_KEY`。
-   * **取不到不算错误** —— 免费模型匿名可用，只是额度按来源共享。
+   * Credential reference (an env var name), read per request. Defaults to
+   * `OPENCODE_API_KEY`. **A missing key is not an error** — free models work
+   * anonymously, just on a shared quota.
    */
   apiKeyEnv?: string
-  /** 免费模型元数据来源。默认 {@link DEFAULT_CATALOG_URL}。 */
+  /** Where free-model metadata comes from. Defaults to {@link DEFAULT_CATALOG_URL}. */
   catalogUrl?: string
-  /** 目录缓存时长（毫秒），默认一小时。 */
+  /** Catalog TTL in milliseconds. Defaults to one hour. */
   catalogTtlMs?: number
-  /** 目录请求超时（毫秒），默认 8 秒。 */
+  /** Catalog request timeout in milliseconds. Defaults to 8s. */
   catalogTimeoutMs?: number
-  /** 单次响应输出上限；模型自身上限更小时以模型为准。 */
+  /** Output cap per response. The model's own lower cap wins. */
   maxTokens?: number
-  /** 目录查不到该模型时假定的上下文容量，默认 128,000。 */
+  /** Context window assumed when the catalog has no entry. Defaults to 128,000. */
   defaultContextWindow?: number
 }
 
-/** 校验并补全配置。越界一律在这里失败，而不是等到发请求时才炸。 */
+/** Validate and complete the config. Out-of-range values fail here, not mid-request. */
 export function resolveConfig(config: Config): {
   connection: ZenConnection
   apiKeyEnv: string
@@ -81,19 +84,19 @@ export function resolveConfig(config: Config): {
 } {
   const defaultContextWindow = config.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW
   if (!Number.isInteger(defaultContextWindow) || defaultContextWindow <= 0) {
-    throw new Error('opencode-zen: defaultContextWindow 必须是正整数')
+    throw new Error('opencode-zen: defaultContextWindow must be a positive integer')
   }
   if (config.maxTokens !== undefined
     && (!Number.isSafeInteger(config.maxTokens) || config.maxTokens <= 0)) {
-    throw new Error('opencode-zen: maxTokens 必须是正整数')
+    throw new Error('opencode-zen: maxTokens must be a positive integer')
   }
   const catalogTtlMs = config.catalogTtlMs ?? DEFAULT_CATALOG_TTL_MS
   if (!Number.isFinite(catalogTtlMs) || catalogTtlMs < 0) {
-    throw new Error('opencode-zen: catalogTtlMs 必须是非负数')
+    throw new Error('opencode-zen: catalogTtlMs must be a non-negative number')
   }
   const catalogTimeoutMs = config.catalogTimeoutMs ?? DEFAULT_CATALOG_TIMEOUT_MS
   if (!Number.isFinite(catalogTimeoutMs) || catalogTimeoutMs <= 0) {
-    throw new Error('opencode-zen: catalogTimeoutMs 必须是正数')
+    throw new Error('opencode-zen: catalogTimeoutMs must be a positive number')
   }
   return {
     connection: {
@@ -118,8 +121,9 @@ export function apply(ctx: Context, config: Config = {}): void {
   })
 
   /**
-   * 凭证优先走 credentials 服务（网页「模型」页写进去的 key 在那儿），
-   * 没有这个服务时环境变量就是全部的凭证面。两处都没有就返回 undefined —— 匿名调用。
+   * Prefer the credentials service (where the web Models page stores the key);
+   * without it, the env var is the whole credential surface. Neither present
+   * returns undefined — an anonymous call.
    */
   const resolveApiKey = async (): Promise<string | undefined> => {
     const credentials = ctx.get('credentials')
@@ -137,7 +141,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.effect(() => ctx.llm.registerAdapter([PROVIDER], adapter), `opencode-zen: ${PROVIDER}`)
 
   ctx.logger.info(
-    '[opencode-zen] 已注册 provider %s（端点 %s，凭证变量 %s）',
+    '[opencode-zen] registered provider %s (endpoint %s, credential env %s)',
     PROVIDER,
     resolved.connection.baseURL,
     resolved.apiKeyEnv,

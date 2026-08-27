@@ -1,16 +1,17 @@
 /**
- * 用到的那部分 DeepSeek Harness API 声明，照 `0.1.0-rc.7` 的源码抄写，每处标了出处。
+ * Declarations for the parts of the DeepSeek Harness API we use, transcribed from the `0.1.0-rc.7` source, each with its origin noted.
  *
- * 为什么自带而不是依赖 npm 包：npm 上的 `@deepseek-ai/dsh-llm` 停在 `0.0.1-rc.1`，
- * 与当前 harness（`0.1.0-rc.7`）的类型对不上，装下来反而编译不过。这些模块运行时
- * 全是 external —— 真正提供实现的是跑着本插件的那个 harness 进程，`LlmAdapter`
- * 和 `attributionHeaders` 都要在运行时真的解析到宿主的实现。
+ * Why vendored instead of depending on the npm package: `@deepseek-ai/dsh-llm` on npm is
+ * stuck at `0.0.1-rc.1` and its types no longer match the current harness (`0.1.0-rc.7`),
+ * so installing it breaks the build. These modules are all external at runtime — the
+ * implementation comes from the harness process hosting this plugin, and both `LlmAdapter`
+ * and `attributionHeaders` must resolve to the host's implementation at runtime.
  *
- * 宿主行为与这里的声明对不上时，先回 harness 源码核对，别改代码去迁就声明。
+ * When host behaviour disagrees with these declarations, check the harness source first — do not bend the code to fit the declarations.
  */
 
 declare module '@deepseek-ai/cordis' {
-  /** cordis Logger 门面是 `Record<'error'|'info'|'warn'|'debug', LoggerMethod>`，这里按用到的列。 */
+  /** The cordis Logger facade is `Record<'error'|'info'|'warn'|'debug', LoggerMethod>`; only what we use is listed. */
   export interface Logger {
     info(message: unknown, ...args: readonly unknown[]): void
     warn(message: unknown, ...args: readonly unknown[]): void
@@ -18,26 +19,27 @@ declare module '@deepseek-ai/cordis' {
     debug(message: unknown, ...args: readonly unknown[]): void
   }
 
-  /** 释放一次注册。 */
+  /** Release one registration. */
   export type Disposer = () => void
 
-  /** 插件 apply 收到的上下文（本插件用到的成员）。 */
+  /** The context a plugin's apply receives (only the members this plugin uses). */
   export interface Context {
     logger: Logger
-    /** `inject: ['llm']` 声明之后才可用。 */
+    /** Available only after declaring `inject: ['llm']`. */
     llm: import('@deepseek-ai/dsh-llm').LlmRuntime
     /**
-     * 可选服务读全局服务表。`ctx.<name>` 属性代理是拓扑敏感的，只给声明过的
-     * 注入用；可选依赖一律走 `ctx.get`（见 harness packages/AGENTS.md）。
+     * Optional services read the global service table. The `ctx.<name>` property proxy is
+     * topology-sensitive and is only for declared injections; optional dependencies always
+     * go through `ctx.get` (see the harness packages/AGENTS.md).
      */
     get(name: 'credentials'): import('@deepseek-ai/dsh-credentials').CredentialsService | undefined
-    /** 注册即副作用：返回的 disposer 绑定在当前 fiber 上。 */
+    /** Registration is an effect: the returned disposer is bound to the current fiber. */
     effect(callback: () => Disposer | void, label?: string): Disposer
   }
 }
 
 declare module '@deepseek-ai/dsh-credentials' {
-  /** packages/credentials —— 凭据引用解析。 */
+  /** packages/credentials — credential reference resolution. */
   export interface CredentialsService {
     resolve(ref: string): Promise<{ value: string } | undefined>
   }
@@ -48,7 +50,7 @@ declare module '@deepseek-ai/dsh-llm' {
 
   // ── packages/llm/llm/src/brand.ts ──
 
-  /** 跨边界的不透明 id 一律带品牌，不用裸 string。 */
+  /** Opaque ids crossing boundaries are branded, never bare strings. */
   export type Branded<B extends string> = string & { readonly __brand: B }
   export type CallId = Branded<'CallId'>
   export type MessageId = Branded<'MessageId'>
@@ -57,12 +59,12 @@ declare module '@deepseek-ai/dsh-llm' {
   // ── packages/llm/llm/src/types.ts ──
 
   export interface TextBlock { type: 'text', text: string }
-  /** 推理 / 思考内容，与可见正文分开。 */
+  /** Reasoning / thinking content, kept separate from visible text. */
   export interface ReasoningBlock { type: 'reasoning', text: string }
   export interface ImageBlock { type: 'image', attachment: unknown }
-  /** 模型请求的一次工具调用。 */
+  /** A tool call requested by the model. */
   export interface ToolCallBlock { type: 'tool-call', id: CallId, name: string, arguments: string }
-  /** 回送给模型的工具执行结果。 */
+  /** A tool execution result sent back to the model. */
   export interface ToolResultBlock {
     type: 'tool-result'
     toolCallId: CallId
@@ -105,8 +107,9 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 
   /**
-   * 计数是**不相交**的：`inputTokens` 只算未命中缓存的输入，命中的走
-   * `cacheReadTokens`。把缓存折进 prompt 总数的 provider 要自己减出来。
+   * The counts are **disjoint**: `inputTokens` covers only cache-missed input, while hits
+   * go to `cacheReadTokens`. A provider that folds cache into the prompt total must
+   * subtract it itself.
    */
   export interface TokenUsage {
     inputTokens: number
@@ -157,19 +160,20 @@ declare module '@deepseek-ai/dsh-llm' {
     context?: LlmModelContext
   }
 
-  /** 带错误码的 LLM 失败，consumer 据此分类处理。 */
+  /** An LLM failure carrying a code, so consumers can classify it. */
   export class LlmError extends Error {
     constructor(message: string, code: string)
     readonly code: string
   }
 
   /**
-   * 每个 provider 请求都必须带的归属头。header 名是小写（HTTP 字段名大小写不敏感）。
-   * @returns 合并进请求的 header，当前只有 `user-agent`。
+   * Attribution headers every provider request must carry. Names are lowercase (HTTP field
+   * names are case-insensitive).
+   * @returns Headers merged into the request; currently only `user-agent`.
    */
   export function attributionHeaders(): Record<string, string>
 
-  /** 注册进 `ctx.llm` 的适配器基类；只有 `stream` 是必须实现的。 */
+  /** Base class for adapters registered with `ctx.llm`; only `stream` must be implemented. */
   export abstract class LlmAdapter {
     providerInfo(provider: string): LlmProviderInfo
     listModels(provider: string): Promise<readonly LlmModelInfo[]>
@@ -189,10 +193,10 @@ declare module '@deepseek-ai/dsh-llm' {
     settingsPath: readonly string[]
   }
 
-  /** packages/llm —— 只列本插件调用到的方法。 */
+  /** packages/llm — only the methods this plugin calls. */
   export interface LlmRuntime {
     registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle
-    /** 让 provider 出现在「模型」设置页里。 */
+    /** Makes the provider appear on the Models settings page. */
     registerConfigurableProviders(entries: readonly ConfigurableProvider[]): Disposer
   }
 }

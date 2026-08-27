@@ -1,21 +1,22 @@
 /**
- * harness 的消息词汇 ↔ OpenAI 线格式。
+ * The harness message vocabulary ↔ the OpenAI wire format.
  *
- * 两边的形状差在一处根本的地方：harness 的一条消息带一个**内容块数组**（正文、
- * 推理、工具调用、工具结果可以混在同一条里），而 OpenAI 的一条消息只有一种角色
- * 和一份内容，工具结果还必须单独成条 `role: "tool"`。所以这里是一对多的展开，
- * 不是字段改名。
+ * The shapes differ in one fundamental way: a harness message carries an **array of
+ * content blocks** (text, reasoning, tool calls and tool results can share one message),
+ * whereas an OpenAI message has a single role and a single content, and a tool result
+ * must become its own `role: "tool"` message. So this is a one-to-many expansion, not
+ * a field rename.
  */
 
 import type { ContentBlock, Message, ToolSchema } from '@deepseek-ai/dsh-llm'
 import type { WireMessage, WireToolCall, WireToolSchema } from './wire.ts'
 
 /**
- * 把 harness 历史转成 OpenAI messages。
+ * Convert harness history into OpenAI messages.
  *
- * @param messages - 会话历史，顺序即模型看到的顺序。
- * @param system - 系统提示；有值时作为第一条 `role: "system"`。
- * @returns 线格式消息数组。
+ * @param messages - Conversation history; the order is what the model sees.
+ * @param system - System prompt; when present it becomes the first `role: "system"`.
+ * @returns The wire-format message array.
  */
 export function toWireMessages(messages: readonly Message[], system?: string): WireMessage[] {
   const out: WireMessage[] = []
@@ -38,11 +39,11 @@ function pushMessage(out: WireMessage[], message: Message): void {
         text.push(block.text)
         break
       case 'reasoning':
-        // 推理内容**不回传**：各家对「把上一轮的思考再喂回去」的处理互不兼容，
-        // 而 OpenAI 兼容的 chat/completions 根本没有承载它的请求字段。
+        // Reasoning is **not** sent back: vendors handle "replay last turn's thinking"
+        // incompatibly, and OpenAI-compatible chat/completions has no field for it.
         break
       case 'image':
-        // 目录里七个模型都没声明图片输入，本插件按纯文本 provider 处理。
+        // None of the seven catalogued models declare image input, so this plugin is text-only.
         break
       case 'tool-call':
         toolCalls.push({
@@ -52,8 +53,8 @@ function pushMessage(out: WireMessage[], message: Message): void {
         })
         break
       case 'tool-result':
-        // 工具结果必须单独成条，且要排在发起调用的那条 assistant 之后 ——
-        // 先把已攒的正文/调用冲出去，顺序才不会乱。
+        // A tool result must be its own message, ordered after the assistant message that
+        // issued the call — flush pending text/calls first to keep the order right.
         flush(out, message.role, text, toolCalls)
         out.push({
           role: 'tool',
@@ -62,8 +63,8 @@ function pushMessage(out: WireMessage[], message: Message): void {
         })
         break
       default:
-        // 内容块是可合并扩展的联合：插件可能加新块。不认识就跳过，
-        // 不要抛 —— 一条消息里出现新块不该让整轮请求发不出去。
+        // Content blocks are an extensible union: plugins may add new kinds. Skip unknown
+        // ones rather than throw — a new block should not stop the whole request.
         break
     }
   }
@@ -93,10 +94,11 @@ function flush(
 }
 
 /**
- * 工具结果的内容块压成一段文本。
+ * Flatten a tool result's content blocks into one string.
  *
- * OpenAI 的 `role: "tool"` 消息只收字符串。结果里的图片块在这里没有位置，
- * 用占位符点明「有一张图但这个 provider 收不了」，比静默丢弃可诊断。
+ * OpenAI's `role: "tool"` message accepts only a string. Image blocks have no place
+ * here, so a placeholder states that an image existed but this provider cannot accept
+ * it — far more diagnosable than dropping it silently.
  */
 function flattenResult(blocks: readonly ContentBlock[]): string {
   const parts: string[] = []
@@ -119,11 +121,11 @@ function flattenResult(blocks: readonly ContentBlock[]): string {
 }
 
 /**
- * 工具 schema 转成 OpenAI `tools` 数组。
+ * Convert tool schemas into the OpenAI `tools` array.
  *
- * @param tools - harness 的工具 schema。
- * @returns 线格式工具数组；入参为空时 undefined（不要发空数组，部分网关会因此
- *   认为「本轮禁止调用工具」）。
+ * @param tools - The harness tool schemas.
+ * @returns The wire-format tools array, or undefined when empty — never send an empty
+ *   array, as some gateways read it as "tool calls are forbidden this turn".
  */
 export function toWireTools(tools: readonly ToolSchema[] | undefined): WireToolSchema[] | undefined {
   if (tools === undefined || tools.length === 0) {
